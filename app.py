@@ -685,10 +685,10 @@ def health():
         return jsonify({'status': 'OK', 'database': 'error'})
 
 if __name__ == '__main__':
-    # Inicializar la base de datos
-    init_db()
-    
-    # Obtener puerto de Railway o usar 5000 por defecto
+# Inicializar la base de datos (se ejecuta siempre)
+init_db()
+
+if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     
     print("=" * 60)
