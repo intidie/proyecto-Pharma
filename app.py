@@ -684,7 +684,7 @@ def health():
     except:
         return jsonify({'status': 'OK', 'database': 'error'})
 
-if __name__ == '__main__':
+
 # Inicializar la base de datos (se ejecuta siempre)
 init_db()
 
