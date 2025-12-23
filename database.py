@@ -36,6 +36,15 @@ class DatabaseManager:
             print(f"Error de conexión: {e}")
             return None
     
+ 
+
+
+
+
+
+
+
+
     def init_database(self):
         """Inicializar las tablas de la base de datos"""
         conn = self.get_connection()
@@ -46,6 +55,14 @@ class DatabaseManager:
         try:
             cur = conn.cursor()
             
+            # --- AGREGA ESTA LÍNEA AQUÍ PARA BORRAR LAS TABLAS VIEJAS ---
+            cur.execute('DROP TABLE IF EXISTS mediciones_toc, mediciones_ph, mediciones_conductividad, mediciones_microbiologia CASCADE;')
+            # -----------------------------------------------------------
+
+   
+
+
+
             # Crear tabla TOC
             cur.execute('''
                 CREATE TABLE IF NOT EXISTS mediciones_toc (
