@@ -1,6 +1,6 @@
 -- Crear tablas para el sistema de laboratorio
 -- Fecha: 2025-12-22
-
+DROP TABLE IF EXISTS mediciones_toc, mediciones_ph, mediciones_conductividad, mediciones_microbiologia CASCADE;
 -- Tabla TOC
 CREATE TABLE IF NOT EXISTS mediciones_toc (
     id SERIAL PRIMARY KEY,
