@@ -1,112 +1,17 @@
-
-
-
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from datetime import datetime
-import psycopg2
-from psycopg2.extras import RealDictCursor
-import os
-from urllib.parse import urlparse
+from database import DatabaseManager
+from importador import ImportadorDatos
 
 app = Flask(__name__)
 CORS(app)
 
-# Configuración de la base de datos desde Railway
-DATABASE_URL = os.environ.get('DATABASE_URL')
+# Inicializar gestores
+db = DatabaseManager()
+importador = ImportadorDatos(db)
 
-def get_db_connection():
-    """Crear conexión a la base de datos"""
-    try:
-        # Railway proporciona DATABASE_URL
-        if DATABASE_URL:
-            # Parsear la URL de la base de datos
-            result = urlparse(DATABASE_URL)
-            conn = psycopg2.connect(
-                database=result.path[1:],
-                user=result.username,
-                password=result.password,
-                host=result.hostname,
-                port=result.port
-            )
-        else:
-            # Conexión local para desarrollo
-            conn = psycopg2.connect(
-                database="laboratorio",
-                user="postgres",
-                password="postgres",
-                host="localhost",
-                port="5432"
-            )
-        return conn
-    except Exception as e:
-        print(f"Error de conexión: {e}")
-        return None
-
-def init_db():
-    """Inicializar las tablas de la base de datos"""
-    conn = get_db_connection()
-    if not conn:
-        print("No se pudo conectar a la base de datos")
-        return
-    
-    try:
-        cur = conn.cursor()
-        
-        # Crear tabla para mediciones de TOC
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS mediciones_toc (
-                id SERIAL PRIMARY KEY,
-                fecha DATE NOT NULL,
-                dato DECIMAL(10, 2) NOT NULL,
-                pu VARCHAR(3) NOT NULL,
-                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        # Crear tabla para mediciones de pH
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS mediciones_ph (
-                id SERIAL PRIMARY KEY,
-                fecha DATE NOT NULL,
-                dato DECIMAL(10, 2) NOT NULL,
-                pu VARCHAR(3) NOT NULL,
-                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        # Crear tabla para mediciones de conductividad
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS mediciones_conductividad (
-                id SERIAL PRIMARY KEY,
-                fecha DATE NOT NULL,
-                dato DECIMAL(10, 2) NOT NULL,
-                pu VARCHAR(3) NOT NULL,
-                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        # Crear tabla para microbiología (para futuro)
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS mediciones_microbiologia (
-                id SERIAL PRIMARY KEY,
-                fecha DATE NOT NULL,
-                tipo VARCHAR(50) NOT NULL,
-                dato DECIMAL(10, 2) NOT NULL,
-                pu VARCHAR(3) NOT NULL,
-                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        conn.commit()
-        cur.close()
-        conn.close()
-        print("✓ Base de datos inicializada correctamente")
-        
-    except Exception as e:
-        print(f"Error al inicializar la base de datos: {e}")
-        if conn:
-            conn.close()
+# Inicializar la base de datos al inicio
+db.init_database()
 
 @app.route('/')
 def index():
@@ -143,6 +48,73 @@ def index():
             font-size: 2.5em;
             text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
             animation: fadeInDown 0.8s ease;
+        }
+
+        .import-section {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+
+        .import-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 3px solid #667eea;
+        }
+
+        .import-title {
+            font-size: 1.5em;
+            color: #333;
+            font-weight: 600;
+        }
+
+        .upload-area {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .upload-box {
+            border: 2px dashed #667eea;
+            border-radius: 15px;
+            padding: 30px;
+            text-align: center;
+            background: #f5f7fa;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .upload-box:hover {
+            border-color: #764ba2;
+            background: #e8ebf5;
+        }
+
+        .upload-box input[type="file"] {
+            display: none;
+        }
+
+        .upload-icon {
+            font-size: 3em;
+            margin-bottom: 10px;
+        }
+
+        .upload-text {
+            color: #555;
+            margin-bottom: 10px;
+        }
+
+        .select-categoria {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 1em;
+            margin-top: 10px;
         }
 
         .main-sections {
@@ -378,6 +350,45 @@ def index():
     <div class="container">
         <h1>🔬 Dashboard de Laboratorio</h1>
         
+        <!-- Sección de importación -->
+        <div class="import-section">
+            <div class="import-header">
+                <h2 class="import-title">📤 Importar Datos desde Archivo</h2>
+            </div>
+            <div class="upload-area">
+                <div class="upload-box" onclick="document.getElementById('file-excel').click()">
+                    <div class="upload-icon">📊</div>
+                    <div class="upload-text"><strong>Subir Excel (.xlsx, .xls)</strong></div>
+                    <input type="file" id="file-excel" accept=".xlsx,.xls" onchange="handleFileUpload(this, 'excel')">
+                    <select id="categoria-excel" class="select-categoria">
+                        <option value="">Seleccionar categoría</option>
+                        <option value="toc">TOC</option>
+                        <option value="ph">pH</option>
+                        <option value="conductividad">Conductividad</option>
+                    </select>
+                    <p style="font-size: 0.85em; color: #666; margin-top: 10px;">
+                        Formato: fecha | dato | pu
+                    </p>
+                </div>
+                
+                <div class="upload-box" onclick="document.getElementById('file-txt').click()">
+                    <div class="upload-icon">📄</div>
+                    <div class="upload-text"><strong>Subir TXT (.txt, .csv)</strong></div>
+                    <input type="file" id="file-txt" accept=".txt,.csv" onchange="handleFileUpload(this, 'txt')">
+                    <select id="categoria-txt" class="select-categoria">
+                        <option value="">Seleccionar categoría</option>
+                        <option value="toc">TOC</option>
+                        <option value="ph">pH</option>
+                        <option value="conductividad">Conductividad</option>
+                    </select>
+                    <p style="font-size: 0.85em; color: #666; margin-top: 10px;">
+                        Formato: fecha,dato,pu (separado por comas)
+                    </p>
+                </div>
+            </div>
+            <div id="alert-import" class="alert"></div>
+        </div>
+        
         <div class="main-sections">
             <div class="section">
                 <div class="section-header">
@@ -489,7 +500,46 @@ def index():
             alert.textContent = mensaje;
             alert.className = `alert ${tipo}`;
             alert.style.display = 'block';
-            setTimeout(() => { alert.style.display = 'none'; }, 3000);
+            setTimeout(() => { alert.style.display = 'none'; }, 5000);
+        }
+
+        async function handleFileUpload(input, tipo) {
+            const file = input.files[0];
+            if (!file) return;
+
+            const categoriaId = tipo === 'excel' ? 'categoria-excel' : 'categoria-txt';
+            const categoria = document.getElementById(categoriaId).value;
+
+            if (!categoria) {
+                mostrarAlerta('alert-import', 'Por favor selecciona una categoría', 'error');
+                input.value = '';
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('categoria', categoria);
+            formData.append('tipo', tipo);
+
+            mostrarAlerta('alert-import', '⏳ Procesando archivo...', 'success');
+
+            try {
+                const response = await fetch('/api/importar', {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    mostrarAlerta('alert-import', `✓ ${result.message}`, 'success');
+                } else {
+                    mostrarAlerta('alert-import', result.message, 'error');
+                }
+            } catch (error) {
+                mostrarAlerta('alert-import', 'Error al importar archivo', 'error');
+            }
+
+            input.value = '';
         }
 
         async function enviarDatos(categoria, formData) {
@@ -564,9 +614,38 @@ def index():
 </html>'''
     return html_content
 
+@app.route('/api/importar', methods=['POST'])
+def importar_datos():
+    """Endpoint para importar datos desde Excel o TXT"""
+    try:
+        file = request.files.get('file')
+        categoria = request.form.get('categoria')
+        tipo = request.form.get('tipo')
+        
+        if not file or not categoria:
+            return jsonify({'success': False, 'message': 'Archivo o categoría no proporcionados'}), 400
+        
+        categorias_validas = ['toc', 'ph', 'conductividad']
+        if categoria not in categorias_validas:
+            return jsonify({'success': False, 'message': 'Categoría no válida'}), 400
+        
+        # Procesar según el tipo de archivo
+        if tipo == 'excel':
+            resultado = importador.procesar_excel(file, categoria)
+        else:  # txt o csv
+            resultado = importador.procesar_txt(file, categoria)
+        
+        if resultado['success']:
+            return jsonify(resultado)
+        else:
+            return jsonify(resultado), 400
+        
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error al importar: {str(e)}'}), 500
+
 @app.route('/api/guardar', methods=['POST'])
 def guardar_medicion():
-    """Endpoint para guardar una nueva medición en la base de datos"""
+    """Endpoint para guardar una nueva medición"""
     try:
         datos_request = request.json
         categoria = datos_request.get('categoria', '').lower()
@@ -585,29 +664,12 @@ def guardar_medicion():
         except:
             return jsonify({'success': False, 'message': 'El Pu debe estar entre 001 y 007'}), 400
         
-        conn = get_db_connection()
-        if not conn:
-            return jsonify({'success': False, 'message': 'Error de conexión a la base de datos'}), 500
+        resultado = db.insertar_medicion(categoria, fecha, dato, pu)
         
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        
-        tabla = f'mediciones_{categoria}'
-        cur.execute(f'''
-            INSERT INTO {tabla} (fecha, dato, pu)
-            VALUES (%s, %s, %s)
-            RETURNING id, fecha, dato, pu, timestamp
-        ''', (fecha, float(dato), pu))
-        
-        nuevo_registro = cur.fetchone()
-        conn.commit()
-        cur.close()
-        conn.close()
-        
-        return jsonify({
-            'success': True,
-            'message': '✓ Datos guardados correctamente en la base de datos',
-            'data': dict(nuevo_registro)
-        })
+        if resultado['success']:
+            return jsonify(resultado)
+        else:
+            return jsonify(resultado), 500
         
     except Exception as e:
         return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500
@@ -620,20 +682,15 @@ def obtener_mediciones(categoria):
         if categoria not in ['toc', 'ph', 'conductividad']:
             return jsonify({'success': False, 'message': 'Categoría no válida'}), 400
         
-        conn = get_db_connection()
-        if not conn:
-            return jsonify({'success': False, 'message': 'Error de conexión'}), 500
+        resultado = db.obtener_mediciones(categoria)
         
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        tabla = f'mediciones_{categoria}'
-        cur.execute(f'SELECT * FROM {tabla} ORDER BY fecha DESC, timestamp DESC')
-        mediciones = cur.fetchall()
-        cur.close()
-        conn.close()
+        if resultado['success']:
+            return jsonify(resultado)
+        else:
+            return jsonify(resultado), 500
         
-        return jsonify({'success': True, 'data': [dict(m) for m in mediciones]})
     except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
+        return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500
 
 @app.route('/api/estadisticas/<categoria>', methods=['GET'])
 def obtener_estadisticas(categoria):
@@ -643,33 +700,21 @@ def obtener_estadisticas(categoria):
         if categoria not in ['toc', 'ph', 'conductividad']:
             return jsonify({'success': False, 'message': 'Categoría no válida'}), 400
         
-        conn = get_db_connection()
-        if not conn:
-            return jsonify({'success': False, 'message': 'Error de conexión'}), 500
+        resultado = db.obtener_estadisticas(categoria)
         
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        tabla = f'mediciones_{categoria}'
-        cur.execute(f'''
-            SELECT 
-                COUNT(*) as total,
-                AVG(dato) as promedio,
-                MAX(dato) as maximo,
-                MIN(dato) as minimo
-            FROM {tabla}
-        ''')
-        stats = cur.fetchone()
-        cur.close()
-        conn.close()
+        if resultado['success']:
+            return jsonify(resultado)
+        else:
+            return jsonify(resultado), 500
         
-        return jsonify({'success': True, 'data': dict(stats)})
     except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
+        return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500
 
 @app.route('/health', methods=['GET'])
 def health():
     """Verificar estado del servidor y conexión a BD"""
     try:
-        conn = get_db_connection()
+        conn = db.get_connection()
         if conn:
             conn.close()
             db_status = "conectada"
@@ -684,17 +729,13 @@ def health():
     except:
         return jsonify({'status': 'OK', 'database': 'error'})
 
-
-# Inicializar la base de datos (se ejecuta siempre)
-init_db()
-
 if __name__ == '__main__':
+    import os
     port = int(os.environ.get('PORT', 5000))
     
     print("=" * 60)
     print("🚀 SERVIDOR INICIADO")
     print(f"📍 Puerto: {port}")
-    print(f"🗄️  Base de datos: {'Railway' if DATABASE_URL else 'Local'}")
     print("=" * 60)
     
     app.run(host='0.0.0.0', port=port, debug=False)
